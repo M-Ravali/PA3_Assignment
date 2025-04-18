@@ -1,167 +1,282 @@
-# Pantheon of Congestion Control
-The Pantheon contains wrappers for many popular practical and research
-congestion control schemes. The Pantheon enables them to run on a common
-interface, and has tools to benchmark and compare their performances.
-Pantheon tests can be run locally over emulated links using
-[mahimahi](http://mahimahi.mit.edu/) or over the Internet to a remote machine.
+# Pantheon Congestion Control Evaluation
 
-Our website is <https://pantheon.stanford.edu>, where you can find more
-information about Pantheon, including supported schemes, measurement results
-on a global testbed so far, and our paper at [USENIX ATC 2018](https://www.usenix.org/conference/atc18/presentation/yan-francis)
-(**Awarded Best Paper**).
-In case you are interested, the scripts and traces
-(including "calibrated emulators") for running the testbed can be found in
-[observatory](https://github.com/StanfordSNR/observatory).
+This repository contains the implementation, analysis, and results of Programming Assignment 3 for Computer Networks (Spring 2025). The project evaluates the performance of different congestion control algorithms using the Pantheon framework and MahiMahi network emulator.
 
-To discuss and talk about Pantheon-related topics and issues, feel free to
-post in the [Google Group](https://groups.google.com/forum/#!forum/pantheon-stanford)
-or send an email to `pantheon-stanford <at> googlegroups <dot> com`.
+## Overview
 
-## Disclaimer
-This is research software. Our scripts will write to the file system in the
-`pantheon` folder. We never run third party programs as root, but we cannot
-guarantee they will never try to escalate privilege to root.
+This project compares three congestion control protocols (BBR, Cubic, and Vegas) under two different network conditions:
+1. High bandwidth, low latency (50 Mbps, 10 ms RTT)
+2. Low bandwidth, high latency (1 Mbps, 200 ms RTT)
 
-You might want to install dependencies and run the setup on your own, because
-our handy scripts will install packages and perform some system-wide settings
-(e.g., enabling IP forwarding, loading kernel modeuls) as root.
-Please run at your own risk.
+The evaluation measures throughput, latency, and packet loss for each protocol to identify their strengths and weaknesses in diverse network environments.
 
-## Preparation
-To clone this repository, run:
+## Requirements
 
+- Linux operating system (tested on Ubuntu 18.04)
+- Python 2.7 (for Pantheon)
+- Python packages: matplotlib, numpy, pandas
+- Git
+- Build essentials
+
+## Installation and Setup
+
+### 1. Install System Dependencies
+
+```bash
+# Update package lists
+sudo apt update && sudo apt upgrade -y
+
+# Install basic dependencies
+sudo apt install -y build-essential dkms linux-headers-$(uname -r)
+sudo apt install -y build-essential zlib1g-dev libncurses5-dev \
+libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev wget
+
+# Install Python 2.7 (if not already installed)
+cd /tmp
+wget https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz
+tar -xf Python-2.7.18.tgz
+cd Python-2.7.18
+./configure --prefix=/opt/python2.7
+make -j$(nproc)
+sudo make install
+sudo ln -s /opt/python2.7/bin/python2.7 /usr/bin/python
+
+# Verify Python installation
+python --version
+
+# Install pip for Python 2.7
+curl https://bootstrap.pypa.io/pip/2.7/get-pip.py -o get-pip.py
+python get-pip.py
+
+# Update PATH
+export PATH=$PATH:~/.local/bin
+echo 'export PATH=$PATH:~/.local/bin' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify pip installation
+pip2 --version
+
+# Install required Python packages
+pip2 install --user pyyaml==5.1.2
 ```
+
+### 2. Clone Pantheon Repository
+
+```bash
 git clone https://github.com/StanfordSNR/pantheon.git
+cd pantheon
 ```
 
-Many of the tools and programs run by the Pantheon are git submodules in the
-`third_party` folder. To add submodules after cloning, run:
+### 3. Install MahiMahi
 
-```
-git submodule update --init --recursive  # or tools/fetch_submodules.sh
-```
+```bash
+# Clone MahiMahi inside Pantheon's third_party directory
+mkdir -p third_party
+cd third_party
+git clone https://github.com/ravinet/mahimahi.git
+cd mahimahi
 
-## Dependencies
-We provide a handy script `tools/install_deps.sh` to install globally required
-dependencies; these dependencies are required before testing **any** scheme
-and are different from the flag `--install-deps` below.
-In particular, we created the [Pantheon-tunnel](https://github.com/StanfordSNR/pantheon-tunnel)
-that is required to instrument each scheme.
+# Install MahiMahi dependencies
+sudo apt install -y libxcb-xinerama0 libpangocairo-1.0-0
+sudo apt install -y libprotobuf-dev protobuf-compiler libssl-dev libhttp-parser-dev libalglibdev libcap-dev libnl-3-dev libnl-genl-3-dev libnl-route-3-dev
+sudo apt install -y apache2
+sudo apt install -y apache2-dev
+sudo apt install -y libxcb-present0 libxcb-present-dev
+sudo apt install -y libpango1.0-dev libcairo2-dev libgtk2.0-dev libx11-dev
 
-You might want to inspect the contents of
-`install_deps.sh` and install these dependencies by yourself in case you want to
-manage dependencies differently. Please note that Pantheon currently
-**only** supports Python 2.7.
+# Build and install MahiMahi
+./autogen.sh
+./configure
+make
+sudo make install
 
-Next, for those dependencies required by each congestion control scheme `<cc>`,
-run `src/wrappers/<cc>.py deps` to print a dependency list. You could install
-them by yourself, or run
-
-```
-src/experiments/setup.py --install-deps (--all | --schemes "<cc1> <cc2> ...")
-```
-
-to install dependencies required by all schemes or a list of schemes separated
-by spaces.
-
-## Setup
-After installing dependencies, run
-
-```
-src/experiments/setup.py [--setup] [--all | --schemes "<cc1> <cc2> ..."]
+# Enable IP forwarding
+sudo sysctl -w net.ipv4.ip_forward=1
 ```
 
-to set up supported congestion control schemes. `--setup` is required
-to be run only once. In contrast, `src/experiments/setup.py` is
-required to be run on every reboot (without `--setup`).
+### 4. Clone This Repository
 
-## Running the Pantheon
-To test schemes in emulated networks locally, run
-
-```
-src/experiments/test.py local (--all | --schemes "<cc1> <cc2> ...")
+```bash
+git clone https://github.com/[your-username]/pantheon-evaluation.git
+cd pantheon-evaluation
 ```
 
-To test schemes over the Internet to remote machine, run
+### 5. Set Up Project Structure
 
-```
-src/experiments/test.py remote (--all | --schemes "<cc1> <cc2> ...") HOST:PANTHEON-DIR
-```
+```bash
+# Create necessary directories
+mkdir -p scripts
+mkdir -p traces
+mkdir -p graphs
 
-Run `src/experiments/test.py local -h` and `src/experiments/test.py remote -h`
-for detailed usage and additional optional arguments, such as multiple flows,
-running time, arbitrary set of mahimahi shells for emulation tests,
-data sender side for real tests; use `--data-dir DIR` to specify an
-an output directory to save logs.
+# Copy the scripts from the repository
+cp scripts/analyze_results.py ~/pantheon/scripts/
+cp scripts/generate_traces.py ~/pantheon/scripts/
 
-## Pantheon analysis
-To analyze test results, run
-
-```
-src/analysis/analyze.py --data-dir DIR
+# Make scripts executable
+chmod +x ~/pantheon/scripts/analyze_results.py
+chmod +x ~/pantheon/scripts/generate_traces.py
 ```
 
-It will analyze the logs saved by `src/experiments/test.py`, then generate
-performance figures and a full PDF report `pantheon_report.pdf`.
+## Running Experiments
 
-## Running a single congestion control scheme
-All the available schemes can be found in `src/config.yml`. To run a single
-congestion control scheme, first follow the **Dependencies** section to install
-the required dependencies.
+### 1. Generate Trace Files
 
-At the first time of running, run `src/wrappers/<cc>.py setup`
-to perform the persistent setup across reboots, such as compilation,
-generating or downloading files to send, etc. Then run
-`src/wrappers/<cc>.py setup_after_reboot`, which also has to be run on every
-reboot. In fact, `test/setup.py` performs `setup_after_reboot` by
-default, and runs `setup` on schemes when `--setup` is given.
-
-Next, execute the following command to find the running order for a scheme:
-```
-src/wrappers/<cc>.py run_first
+```bash
+cd ~/pantheon
+python scripts/generate_traces.py
 ```
 
-Depending on the output of `run_first`, run
+### 2. Install Congestion Control Schemes
 
-```
-# Receiver first
-src/wrappers/<cc>.py receiver port
-src/wrappers/<cc>.py sender IP port
-```
+```bash
+cd ~/pantheon
+python src/wrappers/cubic.py deps
+python src/wrappers/bbr.py deps
+python src/wrappers/vegas.py deps
 
-or
-
-```
-# Sender first
-src/wrappers/<cc>.py sender port
-src/wrappers/<cc>.py receiver IP port
+# Set up the schemes
+python src/experiments/setup.py --install-deps --schemes "cubic bbr vegas"
+python src/experiments/setup.py --setup --schemes "cubic bbr vegas"
 ```
 
-Run `src/wrappers/<cc>.py -h` for detailed usage.
+### 3. Run Experiments
 
-## How to add your own congestion control
-Adding your own congestion control to Pantheon is easy! Just follow these
-steps:
+#### High Bandwidth, Low Latency Scenario (50 Mbps, 10 ms RTT)
 
-1. Fork this repository.
+```bash
+cd ~/pantheon
+python src/experiments/test.py local \
+  --schemes "vegas cubic bbr" \
+  --run-times 1 \
+  --runtime 60 \
+  --data-dir results_50mbps_10ms \
+  --uplink-trace traces/50mbps.trace \
+  --downlink-trace traces/50mbps.trace \
+  --prepend-mm-cmds "mm-delay 5"
+```
 
-2. Add your congestion control repository as a submodule to `pantheon`:
+#### Low Bandwidth, High Latency Scenario (1 Mbps, 200 ms RTT)
 
+```bash
+cd ~/pantheon
+python src/experiments/test.py local \
+  --schemes "vegas cubic bbr" \
+  --run-times 1 \
+  --runtime 60 \
+  --data-dir results_1mbps_200ms \
+  --uplink-trace traces/1mbps.trace \
+  --downlink-trace traces/1mbps.trace \
+  --prepend-mm-cmds "mm-delay 100"
+```
+
+## Data Analysis
+
+### Analyze Results and Generate Graphs
+
+```bash
+cd ~/pantheon
+python scripts/analyze_results.py
+```
+
+This script will:
+1. Load performance data from both experiments
+2. Generate time-series plots for throughput and loss
+3. Create comparison graphs for RTT, throughput vs. RTT, and loss rates
+4. Save all graphs to the `graphs` directory
+5. Print summary statistics for analysis
+
+## Results
+
+The analysis compares the three congestion control algorithms based on:
+
+1. **Throughput Performance**: Examining how efficiently each algorithm utilizes available bandwidth
+2. **Loss Patterns**: Analyzing packet loss behavior under different network conditions
+3. **RTT Values**: Measuring latency impact and queue buildup
+4. **Combined Performance**: Evaluating the throughput vs. latency trade-off
+
+Key findings include:
+- Cubic achieves highest throughput but causes significant latency and loss
+- Vegas provides the best balance between throughput and latency
+- BBR maintains low loss rates but shows unexpectedly low throughput in our tests
+
+## File Structure
+
+```
+.
+├── README.md
+├── scripts/
+│   ├── analyze_results.py   # Script for data analysis and visualization
+│   └── generate_traces.py   # Script for generating trace files
+├── traces/
+│   ├── 1mbps.trace          # Low bandwidth trace file
+│   └── 50mbps.trace         # High bandwidth trace file
+├── results_50mbps_10ms/     # Results from high-bandwidth experiment
+│   ├── pantheon_metadata.json
+│   ├── pantheon_perf.json
+│   └── logs/                # Detailed log files
+├── results_1mbps_200ms/     # Results from low-bandwidth experiment
+│   ├── pantheon_metadata.json
+│   ├── pantheon_perf.json
+│   └── logs/                # Detailed log files
+└── graphs/                  # Generated visualizations
+    ├── high_bw_throughput_timeseries.png
+    ├── low_bw_throughput_timeseries.png
+    ├── high_bw_loss_timeseries.png
+    ├── low_bw_loss_timeseries.png
+    ├── avg_rtt_comparison.png
+    ├── loss_rate_comparison.png
+    └── rtt_vs_throughput.png
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Pantheon Installation**:
+   - If you encounter errors with specific congestion control schemes, try installing them individually.
+   - Some schemes might require additional dependencies not covered in the basic setup.
+
+2. **MahiMahi Issues**:
+   - If MahiMahi commands fail with permission errors, make sure you have run `sudo sysctl -w net.ipv4.ip_forward=1`
+   - If experiencing "mm-delay: command not found", verify MahiMahi installation with `which mm-delay`
+
+3. **Python Version Conflicts**:
+   - Pantheon requires Python 2.7. If you have multiple Python versions, ensure you're using the correct one.
+   - Use `python --version` to verify before running scripts.
+
+4. **Analysis Script Errors**:
+   - If matplotlib throws errors, install it with `pip2 install --user matplotlib`
+   - For pandas errors, install with `pip2 install --user pandas`
+
+### Verifying Experiment Success
+
+To verify that your experiments ran successfully:
+
+1. Check that result directories contain JSON files:
+   ```bash
+   ls -la results_50mbps_10ms/
+   ls -la results_1mbps_200ms/
    ```
-   git submodule add <your-cc-repo-url> third_party/<your-cc-repo-name>
+
+2. Examine performance JSON files:
+   ```bash
+   cat results_50mbps_10ms/pantheon_perf.json
+   cat results_1mbps_200ms/pantheon_perf.json
    ```
 
-   and add `ignore = dirty` to `.gitmodules` under your submodule.
+3. Look for log files with data:
+   ```bash
+   ls -la results_50mbps_10ms/logs/
+   ls -la results_1mbps_200ms/logs/
+   ```
 
-3. In `src/wrappers`, read `example.py` and create your own `<your-cc-name>.py`.
-   Make sure the sender and receiver run longer than 60 seconds; you could also
-   leave them running forever without the need to kill them.
+## License
 
-4. Add your scheme to `src/config.yml` along with settings of
-   `name`, `color` and `marker`, so that `src/experiments/test.py` is able to
-   find your scheme and `src/analysis/analyze.py` is able to plot your scheme
-   with the specified settings.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-5. Add your scheme to `SCHEMES` in `.travis.yml` for continuous integration testing.
+## Acknowledgments
 
-6. Send us a pull request and that's it, you're in the Pantheon!
+- Pantheon framework from Stanford University
+- MahiMahi network emulation toolkit from MIT
+- Assignment guidelines from Computer Networks course, Spring 2025
